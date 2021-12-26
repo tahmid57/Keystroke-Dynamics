@@ -1,0 +1,529 @@
+---
+title: "Prooject4"
+author: "Tahmid Alam (101008957)"
+date: "12/14/2021"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warn=-1)
+```
+
+###Background
+
+Keystroke dynamics means the analysis of typing rhythms to discriminate among users.
+Dr. Roy Maxian and colleagues recruited 51 subjects at CMU who have typed a passcode for a  specific system.
+Subjects completed 8 data-collection sessions (of 50 passwords each), for a total of 400 password-typing samples. They waited at least one day between sessions, to capture some of the day-to-day variation of each subject’s typing.
+In this research they collected a keystroke dynamics data set, developed an evaluation procedure, and measured the performance of a range of anomaly-detection algorithms so that the results can be compared on an equal basis.
+
+###Objective
+
+Our objective is to evaluate whether a user is consistent over time in how they type a given passcode. 
+Also, we compare total time for password input between random users to observe if there is any significance difference.
+We develop a formal and appropriate statistical analysis of the data set.
+
+
+###Data
+
+We have been provided with the typing data from 51 subjects, each typing 400 repetitions of a password in 8 sessions.
+There are 31 various timing features used by researchers  were extracted from the raw data.
+We can classify the variable into 3 classes, the keydown-keydown times and hold times, keydown-keyup times. 
+During Analysis, we will be refereeing these variables types as- 
+Keydown-Keydown Time  -> DD.Time
+Keydown-Keyup Time  -> UD.Time
+Keyhold Times  -> Hold.Time
+ We summed up the timing variables for each repetition during password input, this variable will be referred as , Total Time -> TT.Time
+
+
+
+###Algorithm
+
+1. Exploratory analysis
+  We performed different EDA analysis i.e., Total Time vs Repetition, Total Time vs Session Number to examine the trend of consistency over time for a user.
+  We also plotted boxplot, histograms, density plots to find out if there is significant difference among randomly selected different subjects’ password input times.
+
+2. Developing Statistical Model
+  We developed a linear regression model based on individual subject's total time needed for every session to predict the total time needed for future sessions.
+
+3. Model Analysis
+
+ To examine the model's accuracy, we split the dataset into an 80:20 sample (training:test), then, build the model on the 80% sample and then used the model thus built to predict the dependent variable on test data.
+To study the appropriateness of the model, we plotted diagnostics plots for the linear regression
+
+
+
+###Loading Data
+```{r, warning=FALSE , results= 'hide', echo=FALSE}
+library(readxl)
+library(Hmisc)
+dataset_main <- read_excel("DSL-StrongPasswordData.xlsx")
+dataset <- dataset_main
+```
+
+
+```{r}
+# Getting total Time for every recitation
+TT.Time <- rowSums(dataset[ , c(4:34)])
+dataset <- cbind(dataset, TT.Time)
+#selecting columns based on three features like DD time, UD time and hold time
+DD.Time <- dataset[, c(1,2,3,5,8,11,14,17,20,23,26,29,32)]
+UD.Time <- dataset[,c(1,2,3,6,9,12,15,18,21,24,27,30,33)]
+Hold.Time<- dataset[,c(1,2,3,4,7,10,13,16,19,22,25,28,31,34)]
+#Total DD, UD and Hold Time
+DD.TT.Time <- rowSums(DD.Time[ , c(4:13)])
+dataset <- cbind(dataset,DD.TT.Time)
+UD.TT.Time <- rowSums(UD.Time[ , c(4:13)])
+dataset <- cbind(dataset,UD.TT.Time)
+Hold.TT.Time <- rowSums(Hold.Time[ , c(4:13)])
+dataset <- cbind(dataset,Hold.TT.Time)
+
+```
+
+```{r, warning=FALSE, error=FALSE,echo=FALSE}
+#Droping All other Time Columns
+TT.Time <- dataset[, c(1, 2, 3, 35)]
+#Selecting sessionIndex 1 of User5
+attach(TT.Time)
+sub5.session1 <- TT.Time[which(subject=='s005' & sessionIndex == 1),]
+#Plotting Total Time vs Repitation Number for Session 1 Subject5
+par(mfrow = c(1, 1))
+plot(sub5.session1$rep,sub5.session1$TT.Time, type ='o', ylab = 'Total Time'  , xlab = 'Repetition Number', main= 'Total Time Needed in Session 1 for Subject5')
+#Plotting Total Time vs Repitation Number for Session 5 Subject20
+sub20.session5 <- TT.Time[which(subject=='s020' & sessionIndex == 5),]
+plot(sub20.session5$rep,sub20.session5$TT.Time, type ='o', ylab = 'Total Time'  , xlab = 'Repetition Number', main = ' Total Time Needed in Session 5 for Subject20')
+```
+From the plot depicted above, we can see that the trend of the Total Time vs Repetition Number is decreasing, This means, with each repetition, the user get used to keystrokes of the password hence reducing the the total time.
+
+
+```{r}
+#Total time for Subject 25
+sub25.tt <- TT.Time[which(subject=='s025'),]
+#Aggregating Mean Total Time by Session Index
+sub25.tt <- aggregate(TT.Time ~  sessionIndex, data = sub25.tt, mean)
+#Plotting Total Time vs Session Number for Session 1 Subject5
+plot(sub25.tt$sessionIndex,sub25.tt$TT.Time, type ='o', ylab = 'Total Time'  , xlab = 'Session Number', main = ' Total Time Needed for user 25')
+```
+From the curve above, we can see that the average total time for per session index reduces indicating that with each session the users are more familiar with the keystroke of the password pattern hence reducing the total average time.
+
+
+```{r}
+#Data for Subject57
+sub057 <- aggregate( TT.Time ~  subject+sessionIndex+rep, data = dataset, mean)
+sub057 <- subset(sub057, subject == 's057')
+sub057.ses1 <- subset(sub057, sessionIndex == 1)
+sub057.ses5 <- subset(sub057, sessionIndex == 5)
+sub057.ses8 <- subset(sub057, sessionIndex == 8)
+
+#Boxplot
+par(mfrow=c(1,3))
+boxplot(sub057.ses1[,4],ylim=c(1,6), xlab= 'Subject57 Session1')
+boxplot(sub057.ses5[,4],ylim=c(1,6), xlab= 'Subject57 Session5')
+boxplot(sub057.ses8[,4],ylim=c(1,6), xlab= 'Subject57 Session8')
+```
+
+From the boxplot, we can see that the boxes of the boxplots does not overlap with each other. So there is difference between the three essions
+
+```{r}
+#Histogram
+p1 <- hist(sub057.ses1[,4], main = "Histogram of Total Mean Time for Subject57 Session1")                    
+p2 <- hist(sub057.ses8[,4], main = "Histogram of Total Mean Time for Subject57 session8")                     
+plot( p1, col=rgb(0,0,1,1/4), xlim=c(0,10), main = "Histogram of Total Mean Time for Subject57 Session1 and session8", xlab= 'Mean' )  
+plot( p2, col=rgb(1,0,0,1/4), xlim=c(0,10), add=T ,main = "Histogram of Total Mean Time for Subject57 Session1 and session8", xlab= 'Mean' )
+
+```
+
+From the imposed histogram of total mean time for session1 and session8 we can see that there is little overlapping indicating difference between both groups.
+
+```{r}
+#Density Plot
+plot(density(sub057.ses1[,4]), ylim=c(0,1),xlim= c(2,10), main = 'Density plot for Subject57 Session1 and Session8', col= 'blue')
+lines(density(sub057.ses8[,4]), col = 'red')
+legend(8, 1, legend=c("session1", "session8"),
+       col=c("blue", "red"), lty=1:1, cex=0.8)
+
+```
+From the density plot, we can see that the average total time for Session1 and session8 does not totally overlap indicating the difference between the groups. Also, we can observe a peak shift from session 1 to session 8 which means significant difference. 
+
+```{r}
+#t-test between Session1 and session8
+sub057.ses1.8 <- rbind(sub057.ses1, sub057.ses8)
+t.test(sub057.ses1.8$TT.Time~sub057.ses1.8$sessionIndex)
+
+```
+
+From the t test, The p-value of the test is 2.2e-16, which is less than the significance level alpha = 0.05. We can conclude that the average total time for session1 and session8 of subject57 is significantly different from each other with a p-value = 2.2e-16.
+
+
+```{r, warning=TRUE}
+attach(TT.Time)
+#Selecting Total Time for various users
+sub2.tt <- TT.Time[which(subject=='s002'),]
+sub10.tt <- TT.Time[which(subject=='s010'),]
+sub20.tt <- TT.Time[which(subject=='s020'),]
+sub30.tt <- TT.Time[which(subject=='s030'),]
+sub40.tt <- TT.Time[which(subject=='s040'),]
+ 
+#Merging the total time for selected users
+sub.all <- rbind(sub2.tt, sub10.tt,sub20.tt,sub30.tt,sub40.tt)
+#Aggregating Mean Total Time by Subject
+sub.all.mean <- aggregate(TT.Time ~  subject, data = sub.all, mean)
+#Plotting Bar Plot
+barplot(sub.all.mean[,2], names.arg=sub.all.mean$subject, ylab="mean of Total Time",xlab ="Subjects", las=1, main = "Barplot of Mean Total Time of Random Subjects")
+```
+
+From the barplot, we can observe difference in the total mean time for various users.
+
+```{r}
+#Boxplot Comparison among Subject 2, Subject 10, Subject 30
+sub2.tt<- aggregate(TT.Time ~  sessionIndex, data = sub2.tt, mean)
+sub10.tt<- aggregate(TT.Time ~  sessionIndex, data = sub10.tt, mean)
+sub30.tt<- aggregate(TT.Time ~  sessionIndex, data = sub30.tt, mean)
+
+par(mfrow=c(1,3))
+boxplot(sub2.tt[,2], ylim = c(2,7), xlab= 'Subject2')
+boxplot(sub10.tt[,2], ylim = c(2,7), xlab= 'Subject10')
+boxplot(sub30.tt[,2], ylim = c(2,7), xlab= 'Subject30')
+```
+From the boxplot, we can see that the boxes of the boxplots does not overlap with each other. So ther is difference between the three groups. 
+
+```{r}
+#Plotting Back to back Histogram for Subject 15 and Subject 35
+sub15.tt <- TT.Time[which(subject=='s015'),]
+sub35.tt <- TT.Time[which(subject=='s035'),]
+sub15.tt<- aggregate(TT.Time ~  sessionIndex, data = sub15.tt, mean)
+sub35.tt<- aggregate(TT.Time ~  sessionIndex, data = sub35.tt, mean)
+
+histbackback(sub15.tt[,2],sub35.tt[,2], xlim = c(-8,8), main = 'Back to back Histogram of Subject 15 and Subject 35')
+```
+
+From the backtoback histogram plot above, Comparisons within the total mean time of subject 15 and subject 35 are made on a “common scale.” It clearly indicates difference between the total time for the users.
+
+```{r}
+#Plotting Histogram for Subject 25 and Subject 55
+sub25.tt <- TT.Time[which(subject=='s025'),]
+sub55.tt <- TT.Time[which(subject=='s055'),]
+sub25.tt<- aggregate(TT.Time ~  sessionIndex, data = sub25.tt, mean)
+sub55.tt<- aggregate(TT.Time ~  sessionIndex, data = sub55.tt, mean)
+
+
+p1 <- hist(sub25.tt[,2], main = "Histogram of Total Mean Time for Subject25")                    
+p2 <- hist(sub55.tt[,2], main = "Histogram of Total Mean Time for Subject55")                     
+plot( p1, col=rgb(0,0,1,1/4), xlim=c(0,10), main = "Histogram of Total Mean Time for Subject25 & Subject55", xlab="Mean")          
+plot( p2, col=rgb(1,0,0,1/4), xlim=c(0,10), add=T)
+```
+From the imposed histogram of total mean time for subject 25 and subject55 we can see that there is no overlapping indicating difference between both groups.
+
+
+```{r}
+#Plotting Density Plot for Subject 40 and Subject 50
+sub40.tt <- TT.Time[which(subject=='s040'),]
+sub50.tt <- TT.Time[which(subject=='s050'),]
+sub40.tt<- aggregate(TT.Time ~  sessionIndex, data = sub40.tt, mean)
+sub50.tt<- aggregate(TT.Time ~  sessionIndex, data = sub50.tt, mean)
+
+plot(density(sub40.tt[,2]), ylim=c(0,1),xlim= c(2,10), main = 'Density plot for Subject40 and Subject50', col= 'blue')
+lines(density(sub50.tt[,2]), col = 'red')
+legend(8, 1, legend=c("Subject40", "Subject50"),
+       col=c("blue", "red"), lty=1:1, cex=0.8)
+```
+From the density plot, we can see that the average total time for Subject40 and Subject50 does not totally overlap indicating the difference between the groups.
+
+```{r}
+sub7.tt <- TT.Time[which(subject=='s017'),]
+sub37.tt <- TT.Time[which(subject=='s027'),]
+sub.all <- rbind(sub7.tt, sub37.tt)
+sub.all.mean <- aggregate(TT.Time ~  subject+sessionIndex, data = sub.all, mean)  
+
+#Shapiro-Wilk normality test
+with(sub.all.mean, shapiro.test(TT.Time[subject == "s017"]))
+with(sub.all.mean, shapiro.test(TT.Time[subject == "s027"]))
+var.test(sub.all.mean[,3] ~ subject, data = sub.all.mean)
+#t-test between subject7 and subject37
+t.test(sub.all.mean[,3]~sub.all.mean$subject)
+
+```
+we have done two tailed unpaired t test. The unpaired two-samples t-test is used to compare the mean of two independent groups. Before proceeding to t-test, we needed to perform Preleminary test to check independent t-test assumptions ie Shapiro-Wilk normality test and F test to compare two variances. From the output, the two p-values are greater than the significance level 0.05 implying that the distribution of the data are not significantly different from the normal distribution. In other words, we can assume the normality. The p-value of F-test is p = 0.07703. It’s greater than the significance level alpha = 0.05. In conclusion, there is no significant difference between the variances of the two sets of data. Therefore, we can use the classic t-test witch assume equality of the two variances.
+
+From the t test, The p-value of the test is 0.0002908, which is less than the significance level alpha = 0.05. We can conclude that the average total time for subject17 is significantly different from the average total time for subject27 with a p-value = 0.0002908.
+
+
+
+```{r}
+#Getting Total DD, UD and Hold Time 
+DD.TT.Time <- rowSums(DD.Time[ , c(4:13)])
+DD.TT.Time <- cbind(DD.Time[,1:3],DD.TT.Time)
+UD.TT.Time <- rowSums(UD.Time[ , c(4:13)])
+UD.TT.Time <- cbind(UD.Time[,1:3],UD.TT.Time)
+Hold.TT.Time <- rowSums(Hold.Time[ , c(4:13)])
+Hold.TT.Time <- cbind(Hold.Time[,1:3],Hold.TT.Time)
+
+
+
+#Formating DD Total time for Subject20 and Subject30
+attach(DD.TT.Time)
+sub20.dd.tt <- DD.TT.Time[which(subject=='s020'),]
+sub30.dd.tt <- DD.TT.Time[which(subject=='s030'),]
+
+sub.dd.all <- rbind(sub20.dd.tt,sub30.dd.tt)
+
+
+#Formating UD Total time for Subject20 and Subject30
+attach(UD.TT.Time)
+sub20.ud.tt <- UD.TT.Time[which(subject=='s020'),]
+sub30.ud.tt <- UD.TT.Time[which(subject=='s030'),]
+
+sub.ud.all <- rbind(sub20.ud.tt,sub30.ud.tt)
+
+
+
+#Formating Hold Total time for Subject20 and Subject30
+attach(Hold.TT.Time)
+sub20.hold.tt <- Hold.TT.Time[which(subject=='s020'),]
+sub30.hold.tt <- Hold.TT.Time[which(subject=='s030'),]
+
+sub.hold.all <- rbind(sub20.hold.tt,sub30.hold.tt)
+
+
+#Combining Subject20 and Subject30
+sub.all.mean <- cbind(sub.dd.all,sub.ud.all[,4], sub.hold.all[,4])
+sub.all.mean <- as.data.frame(sub.all.mean)
+colnames(sub.all.mean) <- c('subject','sessionIndex','rep', 'DD_Time',
+                   'UD_Time','Hold_Time')
+
+
+sub.all.mean[,2] <- as.numeric(sub.all.mean[,2])
+sub.all.mean[,3] <- as.numeric(sub.all.mean[,3])
+sub.all.mean[,4] <- as.numeric(sub.all.mean[,4])
+```
+
+```{r}
+#Pair plots
+attach(sub.all.mean)
+sub20.tt <- cbind(DD.TT.Time[which(subject=='s020'),],UD.TT.Time[which(subject=='s020'),],Hold.TT.Time[which(subject=='s020'),])
+sub20.tt <- sub20.tt[-c(5,6,7,9,10,11)] 
+sub30.tt <- cbind(DD.TT.Time[which(subject=='s030'),],UD.TT.Time[which(subject=='s030'),],Hold.TT.Time[which(subject=='s030'),])
+sub30.tt <- sub30.tt[-c(5,6,7,9,10,11)] 
+#Pairs plot
+panel.cor <- function(x, y, digits=2, prefix="", cex.cor, ...) {
+usr <- par("usr")
+on.exit(par(usr))
+par(usr = c(0, 1, 0, 1))
+r <- abs(cor(x, y, use="complete.obs"))
+txt <- format(c(r, 0.123456789), digits=digits)[1]
+txt <- paste(prefix, txt, sep="")
+if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+text(0.5, 0.5, txt, cex = cex.cor * (1 + r) / 2)
+}
+
+pairs(sub20.tt[,4:6],
+      upper.panel = panel.cor,
+      pch = 18,
+      main = "Base R: Pairs Plot for Subject20")
+
+#Correlation Matrix
+cor(sub20.tt[,4:6])
+
+pairs(sub30.tt[,4:6], 
+      upper.panel = panel.cor,
+      pch = 18,
+      main = "Base R: Pairs Plot for Subject30")
+
+#Correlation Matrix
+cor(sub30.tt[,4:6])
+      
+```
+
+All other boxes display a scatterplot of the relationship between each pairwise combination of variables. 
+
+- From the correlation matrix, we can say that DD time and UD time for subject 20 positively correlated with a value of 0.95, but DD time and Hold time is weekly correlated with a value of 0.31.
+- From the correlation matrix, we can say that DD time and UD time for subject 20 positively correlated with a value of 0.97, but DD time and Hold time is weekly correlated with a value of 0.28.
+
+```{r}
+#boxplots and t-tests for the 4 variables at once
+for (i in 4:6) { # variables to compare are variables 1 to 4
+  boxplot(sub.all.mean[, i] ~ sub.all.mean$subject, # draw boxplots by group
+    ylab = names(sub.all.mean[i]), # rename y-axis with variable's name
+    xlab = "Subject"
+  )
+  print(t.test(sub.all.mean[, i] ~sub.all.mean$subject)) # print results of t-test
+}
+```
+
+From the box plots, we can see the boxes for the variables is not overlapping which indicates the difference between them.
+
+From the t-test, we can see that the p-values is 6.133e-12 which is smaller than the significance value of 0.05. So we can the variables DD time, UD Time and Hold time is significantly different from each other for both subjects.
+
+
+###Linear Regression Model
+
+Linear regression is used to predict the value of an outcome variable Y based on one or more input predictor variables X. The aim is to establish a linear relationship (a mathematical formula) between the predictor variable(s) and the response variable, so that, we can use this formula to estimate the value of the response Y, when only the predictors (Xs) values are known. 
+
+Here, we Developed a linear regression model for subject5. We took the average total time for password input for per session and the sessionIndex as the response variable.
+
+```{r, warning=FALSE, echo=FALSE}
+#Preparing Data For LM
+lm.data <- aggregate(TT.Time ~  subject+sessionIndex, data = dataset, mean) 
+lm.data5= subset(lm.data, subject == "s005")
+ # scatterplot
+scatter.smooth(x=lm.data5$TT.Time, y=lm.data5$TT.Time, main="Total Time vs Session index", ylab = 'Session Index' , xlab = 'Total Time') 
+```
+
+The scatter plot along with the smoothing line above suggests a linearly decreasing  relationship between the ‘Total Time’ and ‘Session’ variables. This is a good thing, because, one of the underlying assumptions in linear regression is that the relationship between the response and predictor variables is linear and additive.
+
+```{r}
+# building linear regression model on full data
+linearMod <- lm(sessionIndex ~ TT.Time, data=lm.data5, model=TRUE) 
+#Summary
+summary(linearMod)
+
+#AIC
+AIC(linearMod)
+#BIC
+BIC(linearMod)
+```
+
+Here, the p-value is 0.000673 for TT.Time, We can consider a linear model to be statistically significant only when both these p-Values are less that the pre-determined statistical significance level, which is ideally 0.05. 
+
+R-Squared with 0.8518 tells us is the proportion of variation in the dependent (response) variable that has been explained by this model
+
+F-statistic are measures of goodness of fit. with a F-statistics of 41.24, we can say its a fairly good model.
+
+AIC and BIC is reletively low value which is a indication of good model.
+
+
+```{r}
+#Predicting Linear Models
+set.seed(100)  # setting seed to reproduce results of random sampling
+trainingRowIndex <- sample(1:nrow(lm.data5), .8*nrow(lm.data5))  # row indices for training data
+trainingData <- lm.data5[trainingRowIndex, ]  # model training data
+testData  <- lm.data5[-trainingRowIndex, ]    # test data
+lmMod <- lm(sessionIndex ~ TT.Time, data=trainingData)  # build the model
+summary(lmMod)
+distPred <- predict(lmMod, testData)  # predict distance
+actuals_preds <- data.frame(cbind(actuals=testData$TT.Time, predicteds=distPred))  # make actuals_predicteds dataframe.
+correlation_accuracy <- cor(actuals_preds)
+head(actuals_preds)
+#min_max_accuracy
+(mean(apply(actuals_preds, 1, min) / apply(actuals_preds, 1, max))) *100
+#mean absolute percentage deviation
+(mean(abs((actuals_preds$predicteds - actuals_preds$actuals))/actuals_preds$actuals)  )*100
+
+```
+
+We splited our dataset into a 80:20 sample (training:test), then, built the model on the 80% sample and then use the model thus built to predict the dependent variable on test data. Doing it this way, we have the model predicted values for the 20% data (test) as well as the actuals (from the original dataset). By calculating accuracy measures (like min_max accuracy) and error rates (MAPE or MSE), we can find out the prediction accuracy of the model. In our case, the min_max accuracy is 92.09%.
+
+```{r}
+#k- Fold Cross validation
+library(DAAG)
+par(oma=c(0,1,2,0))
+cvResults <- suppressWarnings(CVlm(data=lm.data5, form.lm=linearMod, m=5,  seed=100, legend.pos="bottomleft", printit=FALSE, main="Small symbols are predicted values while bigger ones are actuals."));  # performs the CV
+attr(cvResults, 'ms') 
+par(mfrow=c(2,2))
+plot(linearMod)
+```
+It is important to rigorously test the model’s performance as much as possible. One way is to ensure that the model equation you have will perform well, when it is ‘built’ on a different subset of training data and predicted on the remaining data. From the plot, we can see the lines of best fit are  parallel and as close to each other as possible. 
+
+
+###Multiple Linear Regression
+
+Multiple regression is an extension of linear regression into relationship between more than two variables. In simple linear relation we have one predictor and one response variable, but in multiple regression we have more than one predictor variable and one response variable. Here we can develop a multiple linear regression with total time as a response variable with DD time, UD Time and Hold time as predictor variables. We create a subset of these variables from the data set for this purpose.
+
+
+```{r}
+#Aggregating Data
+mlm.data.dd <- aggregate( DD.TT.Time ~  subject+sessionIndex, data = dataset, mean)
+mlm.data.ud <- aggregate( UD.TT.Time ~  subject+sessionIndex, data = dataset, mean) 
+mlm.data.hold <- aggregate( Hold.TT.Time ~  subject+sessionIndex, data = dataset, mean) 
+mlm.data.tt <- aggregate( TT.Time ~  subject+sessionIndex, data = dataset, mean)
+#Combining Model Data
+mlm.data <- cbind(mlm.data.dd, mlm.data.ud[,3], mlm.data.hold[,3],mlm.data.tt[,3])
+colnames(mlm.data)[4] <- "UD.TT.Time"
+colnames(mlm.data)[5] <- "Hold.TT.Time"
+colnames(mlm.data)[6] <- "TT.Time"
+#Checking Correlation Data
+plot(mlm.data[,3:6])
+```
+
+From the plot, we can see both DD time and UD time are highly correlated to TT.time. On the other hand , hold time shows weak corelation with TT.time. Hence we can drop hold time from the regression model for improved result.
+
+```{r}
+#Regression
+mlm.model <- lm(TT.Time ~DD.TT.Time+ UD.TT.Time, data = mlm.data)
+summary(mlm.model)
+```
+Here, it can be seen that p-value of the F-statistic is < 2.2e-16, which is highly significant. This means that, at least, one of the predictor variables is significantly related to the outcome variable. In our model, with DD time and UD time as predictor variables, the adjusted R2 = 0.99, meaning that “99% of the variance in the measure of TT.time can be predicted by DD time and UD time.
+
+```{r}
+#confidence interval of the model coefficient can be extracted
+confint(mlm.model)
+#Residual Standard Error
+sigma(mlm.model)/mean(mlm.data$TT.Time)
+```
+In our multiple regression example, the RSE is 0.01562 corresponding to 0.3% error rate.
+
+```{r}
+#Diagonistics Plots 
+par(mfrow=c(2,2))
+plot(mlm.model)
+```
+From the Residulas vs Fitted curve, we can see if residuals have non-linear patterns. There could be a non-linear relationship between predictor variables and an outcome variable and the pattern could show up in this plot if the model doesn’t capture the non-linear relationship. Here we can see equally spread residuals around a horizontal line without distinct patterns, that is a good indication we don’t have non-linear relationships.
+
+The Q-Q plot shows if residuals are normally distributed. Here the residuals follow a straight line well.
+
+Scale-Location plot shows if residuals are spread equally along the ranges of predictors. This is how we can check the assumption of equal variance (homoscedasticity). It’s good that we can see a horizontal line with equally (randomly) spread points.
+
+Residuals vs Leverage plot helps us to find influential cases. we can barely see Cook’s distance lines (a red dashed line) because all cases are well inside of the Cook’s distance lines. 
+
+```{r}
+preds = NULL
+
+for(i in 1:84){
+  lm.mod.full.i=
+    lm(TT.Time~DD.TT.Time+UD.TT.Time+Hold.TT.Time, data = mlm.data[-i,], family = binomial())
+  lm.mod.lh.i =
+    lm(TT.Time~DD.TT.Time+UD.TT.Time, data = mlm.data[-i,], family = binomial())
+  lm.mod.lw.i =
+    lm(TT.Time~DD.TT.Time+Hold.TT.Time, data = mlm.data[-i,], family = binomial())
+  lm.mod.wh.i=
+    lm(TT.Time~UD.TT.Time+Hold.TT.Time, data = mlm.data[-i,], family = binomial())
+  
+  preds =rbind(preds,
+               c(predict(lm.mod.full.i, mlm.data[i,], type = 'response'),
+                 predict(lm.mod.lh.i, mlm.data[i,], type = 'response'),
+                 predict(lm.mod.lw.i, mlm.data[i,], type = 'response'),
+                 predict(lm.mod.wh.i, mlm.data[i,], type = 'response'), mlm.data[i,2]))
+}
+
+colnames(preds) = c("Full", "HU", "LH", "DU","Actual")
+pairs(preds)
+
+plot(preds[,c(1,4)])
+abline(h= 0.5)
+abline(v = 0.5)
+```
+
+
+The above plot shows that the full model and the model based of DD time and UD Time are effectively the same for the LOOCV. 
+
+###References
+
+https://www.cs.cmu.edu/~keystroke/KillourhyMaxion09.pdf
+https://www.cs.cmu.edu/~keystroke/
+https://github.com/RoyMaxion/RoyMaxion.github.io/blob/master/projects/keystroke-benchmark/evaluation-script.R
+http://r-statistics.co/Linear-Regression.html
+http://www.sthda.com/english/articles/40-regression-analysis/168-multiple-linear-regression-in-r/
+https://stackoverflow.com/questions/65124061/confusion-matrix-for-a-logistic-model
+https://github.com/cran/sparklyr/blob/c0effdbed11c95e42ea37193b1cfe2516217516b/R/ml_classification_logistic_regression.R
+https://towardsdatascience.com/understanding-boxplots-5e2df7bcbd51
+https://www.statmethods.net/graphs/density.html
+http://www.sthda.com/english/wiki/unpaired-two-samples-t-test-in-r
+https://data.library.virginia.edu/diagnostic-plots/
+https://statisticsbyjim.com/regression/choosing-regression-analysis/
+https://www.investopedia.com/terms/m/mlr.asp
+https://www.northeastern.edu/graduate/blog/statistical-modeling-for-data-analysis/
+
+
+
+
